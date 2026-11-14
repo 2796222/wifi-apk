@@ -1,0 +1,52 @@
+# 把 Python 项目自动打包成 Android APK（在 GitHub 的免费 Linux 机器上跑 buildozer）
+# 用法：把整个 D:\wifi 目录推到 GitHub 仓库，然后 Actions 里手动运行本 workflow。
+name: build-apk
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装系统依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            git zip unzip openjdk-17-jdk python3-pip python3-venv \
+            autoconf libtool pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev \
+            libtinfo6 cmake libffi-dev libssl-dev
+
+      - name: 安装 buildozer
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install buildozer cython virtualenv
+
+      - name: 缓存 buildozer（第一次慢，之后快很多）
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.buildozer
+            android/.buildozer
+          key: buildozer-${{ hashFiles('android/buildozer.spec') }}
+
+      - name: 复制核心模块到 android/
+        run: |
+          cp netctl_core.py ont_core.py crypto_compat.py android/
+
+      - name: 打包 APK
+        working-directory: android
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          buildozer -v android debug
+
+      - name: 上传 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: netctl-apk
+          path: android/bin/*.apk
+          if-no-files-found: error

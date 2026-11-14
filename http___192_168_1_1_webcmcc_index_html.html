@@ -1,0 +1,532 @@
+﻿<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+    <head>
+<meta name="renderer" content="webkit" />
+<meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" />
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" >
+<!-- DTS2017082408289 -->
+<meta http-equiv="Expires" content="0">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Cache-Control" content="no-cache">
+<meta http-equiv="Cache" content="no-cache">
+<meta http-equiv="Cache-Control" content="no-store">
+<script>
+	var js_time = new Date().getTime();
+	document.writeln('<script type="text/javascript" src="./script/bigInt.js?v=' + js_time +'"><\/script>');
+	document.writeln('<script type="text/javascript" src="./script/nc.js?v=' + js_time +'"><\/script>');
+	document.writeln('<script type="text/javascript" src="./script/aes_1.js?v=' + js_time +'"><\/script>');
+</script>
+<title>WEBç»éé¡µé¢</title>
+<style type="text/css">
+html{
+	width: 100%;
+	height: 100%;
+	background-image: url("./images/cmcc_background.jpg");
+ 	background-repeat: no-repeat;
+ 	background-attachment: fixed;
+    background-size:cover;
+
+}
+body{margin:0;padding:0;margin-top:100px;font-size:12px;}
+td{color:#5c5d55;font-size:15px;}
+td{font-family:"Microsoft Yahei",éé»;font-weight: 600}
+#toptr{height:70px;}
+#top{position:relative; width:498px;height:124px; z-index:5; background-color:#022556; background:url(./images/login_top.jpg); background-repeat:no-repeat;top:0px;}
+
+#bottomtr{height:20px;}
+#lefttd{width:30px;}
+#bgimg{position:relative;width:454px; height:273px;margin:0 auto;border:18px solid #e7e4e4;border-radius:10px;-moz-border-radius: 10px; -webkit-border-radius: 10px;background-position:left 40px;background: #e7e4e4}
+#loginput_bak{solid #0080F8;width:180px;font-family:"å®ä½",verdana;}
+.loginput{width:230px;border:1px #87a6c3 solid;border:0px;outline: 0px;height: 35px;font-size:15px;padding-left:15px;}
+.bt{background:url(/images/bt.jpg);width:58px;height:16px;margin:0px;padding:0px;border:0px;font-size:12px;}
+
+.title_index{
+	position:absolute;
+	height:45px;
+	width:320px;
+	font-size:18px;
+	font-weight:bold;
+	color:white;
+	text-align:left;
+	left:136px;
+	top: 90px;
+}
+#app{
+	width: 130px;
+	height: 130px;
+	margin:100px auto;
+}
+#logo{
+	width: 237px;
+	height: 100px;
+	margin:100px auto;
+	margin-bottom: 70px;
+}
+#logininput{
+	border-radius: 9px;
+	-moz-border-radius: 9px;
+	-webkit-border-radius: 9px;
+}
+#main{
+	border:1px solid #ebe9e9;
+	border-radius: 12px;
+	-moz-border-radius: 12px;
+	-webkit-border-radius: 12px;
+	width: 450px;
+	height: 270px;
+	background: #ffffff
+}
+#logininput tr{
+	height: 35px;
+	border:5px solid red;
+}
+#Submit,#Regist,#Cancel{
+	width: 80px;
+	height: 35px;
+	border:1px solid #dcdcdc;
+	border-radius: 5px;
+	-moz-border-radius: 5px;
+	 -webkit-border-radius: 5px;
+	font-size: 15px;
+	background: #e9e9e9;
+	font-weight: 600;
+	color: #5c5d55
+}
+#Regist{
+	width: 90px;
+}
+.divtd{
+	width: 300px;
+	border:1px solid #dadada;
+	padding:3px;
+	padding-left:8px;
+	margin-left: 50px;
+}
+
+.img_eye_close{
+	width: 25px;
+	height: 25px;
+	background: url(./images/eye_close.png);
+	background-size: 23px;
+	}
+.eye_open{
+	width: 25px;
+	height: 25px;
+	background: url(./images/eye_open.png);
+	background-size: 23px;
+	}
+
+#eyeOpenPassword{
+	display: inline-block;
+	position: absolute;
+	left: 354px;
+	margin-top: 8px;
+	}
+
+::-ms-clear,::-ms-reveal{
+     display:none;
+}
+</style>
+<script>
+
+var usernameGet = '';
+
+// var g_dh_g = "02";
+// var g_dh_p = "FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD129024E088A67CC74020BBEA63B139B22514A08798E3404DDEF9519B3CD3A431B302B0A6DF25F14374FE1356D6D51C245E485B576625E7EC6F44C42E9A63A3620FFFFFFFFFFFFFFFF";
+// var privkey = getDHprvkey();
+// var mypubkey = getDHkey(g_dh_g, privkey, g_dh_p);
+// sendRequest1("/boaform/web_gen_dh_key",{"web_dh_pub":mypubkey},function(data){
+// 	var return_data = {"retcode" :"0", "data": data};
+// 	genDHkey(JSON.stringify(return_data),privkey,g_dh_p);
+// });
+
+sendRequest1("/boaform/web_gen_dh_key",{"web_dh_pub": ""},function(data){
+	Crypto_aes_g_key = data.auc_private.toLowerCase();
+});	
+
+function change_lang_en(){
+    document.getElementById("lang_user").innerHTML = 'Username:';
+    document.getElementById("lang_password").innerHTML = 'Password:';
+    document.getElementById("Submit").value = 'Login';
+    document.getElementById("Regist").value = 'Cancel';
+    document.getElementById("username").focus();
+}
+function change_lang_ch(){
+    document.getElementById("lang_user").innerHTML = 'è´¦ å· ';
+    document.getElementById("lang_password").innerHTML = 'å¯ ç  ';
+    document.getElementById("Submit").value = 'ç¡®å®';
+    document.getElementById("Regist").value = 'è®¾å¤æ³¨å';
+    document.getElementById("username").focus();
+}
+function detectCapsLock(e){
+  var valueCapsLock=e.keyCode||e.which;
+  var valueShift=e.shiftKey ? e.shiftKey:((valueCapsLock==16 ) ? true : false );
+  if (((valueCapsLock >=65 && valueCapsLock <= 90 ) && ! valueShift)||((valueCapsLock >=97 && valueCapsLock <= 122 ) && valueShift))
+  {
+    document.getElementById("password").title = "æ¨çå¤§åéå®é®å·²æå¼ï¼";
+    // document.getElementById("capStatus").innerHTML = "(å¤§åéå®é®å·²æå¼ï¼)";
+  }
+  else
+  {
+    document.getElementById("capStatus").innerHTML = "";
+  }
+}
+window.onload=function(){
+	window.document.loginform.username.focus();
+	change_lang_ch();
+	init_login();
+}
+function isValidAscii(val)
+{
+    for ( var i = 0 ; i < val.length ; i++ )
+    {
+        var ch = val.charAt(i);
+        if ( ch < ' ' || ch > '~' )
+        {
+            return false;
+        }
+    }
+    return true;
+}
+function cancel(){
+	var nonedatav = Math.random();
+  	window.location = "/webcmcc/index.html?none="+nonedatav;
+}
+function cancel_login(){//è®¾å¤æ³¨å
+  var nonedatav = Math.random();
+  var obj = new Object;
+	sendRequest("/boaform/web_Capability_show",obj,function(datav){
+		if(datav.g_areainfo == "ZHJ") {//æµæ±å°åºç 
+			//passwordæ³¨å
+			if(datav.reg_type == 1) {
+				sendRequest("/boaform/web_password_auth_show","none:noned",function(dataPass){
+					//å¤æ­è®¾å¤æ¯å¦æ³¨åè³100%
+					if(!(dataPass.web_ucStatus == 0 && dataPass.web_ucResult == 1)){
+						window.location = "/webcmcc/login.html?noned="+nonedatav;
+					}else{
+						alert("è®¾å¤å·²ç»æ³¨åï¼æ éåæ³¨åã");
+						return;
+					}
+				});
+			//loidæ³¨å
+			} else if (datav.reg_type == 0) {
+				sendRequest("/boaform/web_loid_auth_show","none:noned",function(dataLoid){
+					//å¤æ­è®¾å¤æ¯å¦æ³¨åè³100%
+					if(!(dataLoid.web_ucStatus == 0 && dataLoid.web_ucResult == 1)) {
+						window.location = "/webcmcc/login.html?noned="+nonedatav;
+					}else{
+						alert("è®¾å¤å·²ç»æ³¨åï¼æ éåæ³¨åã");
+						return;
+					}
+				});
+			}
+		}else{
+  			window.location = "/webcmcc/login.html?none="+nonedatav;
+		}
+	});
+}
+ //åå»ºAJAXå¼æ
+var xmlhttp = null;
+function createXmlhttp () {
+ if (window.XMLHttpRequest) {
+     //éå¯¹FireFoxï¼Mozillarï¼Operaï¼Safariï¼IE7ï¼IE8
+     xmlhttp = new XMLHttpRequest();
+     //éå¯¹æäºç¹å®çæ¬çmozillaræµè§å¨çBUGè¿è¡ä¿®æ­£
+     if (xmlhttp.overrideMimeType) {
+            xmlhttp.overrideMimeType("text/xml");
+        }
+ 	}else if (window.ActiveXObject) {
+         //éå¯¹IE6ï¼IE5.5ï¼IE5
+        //ä¸¤ä¸ªå¯ä»¥ç¨äºåå»ºXMLHTTPRequestå¯¹è±¡çæ§ä»¶åç§°ï¼ä¿å­å¨ä¸ä¸ªjsçæ°ç»ä¸­
+        //æå¨åé¢ççæ¬è¾æ°
+        var activexName = ["MSXML2.XMLHTTP","Microsoft.XMLHTTP"];
+        for (var i = 0; i < activexName.length; i++) {
+            try{
+                //ååºä¸ä¸ªæ§ä»¶åè¿è¡åå»ºï¼å¦æåå»ºæåå°±ç»æ­¢å¾ªç¯
+                //å¦æåå»ºå¤±è´¥ï¼åæåºå¼å¸¸ï¼ç¶åå¯ä»¥ç»§ç»­å¾ªç¯ï¼ç»§ç»­å°è¯åå»º
+                xmlhttp = new ActiveXObject(activexName[i]);
+                break;
+            } catch(e){
+            }
+        }
+    }
+}
+var currentCallBack = null;
+var nonedatav = Math.random();
+//åéè¯·æ±åå®¹
+function sendRequest(url,param,callback){
+    currentCallBack = callback;
+    createXmlhttp ();
+	try{
+		//xmlhttp.onreadystatechange = processResponse;  //åè°æ¹æ³
+		xmlhttp.open("post",url + ".cgi",false); // trueå¼æ­¥
+		xmlhttp.setRequestHeader("content-type","application/x-www-form-urlencoded");
+		xmlhttp.setRequestHeader("Cache-Control", "no-cache");
+		if(!param['mode_name']){
+			var str = "mode_name="+url+"&";
+			str += "nonedata="+nonedatav+"&";
+		}else{
+			var str = '';
+			str += "nonedata="+nonedatav+"&";
+		}
+		for(var i in param){
+			str += i + "=" + encodeURIComponent(param[i]) + "&";
+		}
+		str = str.substring(0,str.length -1);
+		xmlhttp.send(str);
+
+		var str = xmlhttp.responseText;
+		var webdata = eval("("+str+")");
+		if (webdata){
+			webdata = webdata.data;
+		}
+		if(currentCallBack)
+		{
+			currentCallBack(webdata);
+		}
+
+	}catch(e){
+	}
+}
+function processResponse() {
+	if ( xmlhttp.readyState == 4 ) {
+		if ( xmlhttp.status == 200 ||  xmlhttp.status==0) {
+			var str = xmlhttp.responseText;
+			var webdata = eval("("+str+")");
+			if (webdata){
+				webdata = webdata.data;
+			}
+			if(currentCallBack){
+				currentCallBack(webdata);
+			}
+		}
+	}
+}
+function init_login(){
+	document.getElementById("username").focus();
+	var obj = new Object;
+	sendRequest("/boaform/web_query_user_show",obj,function(data){
+		var web_user_name = decrypt_info(data.web_user_name);
+		document.getElementById('username').value = web_user_name;
+		usernameGet = web_user_name;
+	});
+	var errobj = new Object;
+	errobj.web_login_name = document.getElementById('username').value;
+	sendRequest("/boaform/web_login_error",errobj,function(data){
+		if(data.result == "three_error_login"){
+			alert("å¯ç éè¯¯ä¸æ¬¡ï¼è¯·ä¸åéä¹åéæ°ç»å½ï¼");
+			document.getElementById('username').disabled = true;
+			document.getElementById('password').disabled = true;
+			document.getElementById('Submit').disabled = true;
+			document.getElementById('Regist').disabled = true;
+		}else{
+			document.getElementById('username').disabled = false;
+			document.getElementById('password').disabled = false;
+			document.getElementById('Submit').disabled = false;
+			document.getElementById('Regist').disabled = false;
+		}
+	});
+}
+
+function checkSkipRegister() {
+	var capability_obj = new Object;
+	var result = 0;
+	sendRequest("/boaform/web_Capability_show",capability_obj,function(datav){
+		if(datav.g_areainfo == "ZHJ") {
+			//passwordæ³¨å
+			if(datav.reg_type == 1 && datav.auth_procmode == 2) {
+				sendRequest("/boaform/web_password_auth_show","none:noned",function(dataPass){
+					//å¤æ­è®¾å¤ææ²¡ææ³¨å
+					if(!(dataPass.web_ucStatus == 0 && dataPass.web_ucResult == 1)){
+						window.location = "/webcmcc/login.html?noned="+nonedatav;
+						result = 1;
+					}
+				});
+			//loidæ³¨å
+			} else if (datav.reg_type == 0 && datav.auth_procmode == 2) {
+				sendRequest("/boaform/web_loid_auth_show","none:noned",function(dataLoid){
+					//å¤æ­è®¾å¤ææ²¡ææ³¨å
+					if(!(dataLoid.web_ucStatus == 0 && dataLoid.web_ucResult == 1)) {
+						window.location = "/webcmcc/login.html?noned="+nonedatav;
+						result = 1;
+					}
+				});
+			}
+		}
+	 	//ä»¥ä¸ä¸ºæ°å¢ä»£ç  6-9
+	 	// if(datav.itms_reg_status == '0' || datav.itms_reg_statusã== '2'){
+	 	// 		//alert('è®¾å¤æªè®¤è¯ï¼å³å°è¿å¥è®¾å¤æ³¨åé¡µé¢');
+	 	// }
+	});
+	return result;
+}
+
+function login(){
+if(document.getElementById("username").value == "")
+	{
+		alert("è´¦å·ä¸è½ä¸ºç©º");
+		return;
+	}
+	if (!isValidAscii(document.getElementById("username").value))
+	{
+		alert("è´¦å·åå«éæ³å­ç¬¦.");
+		return;
+	}
+	if(document.getElementById("password").value == "")
+	{
+		alert("å¯ç ä¸è½ä¸ºç©º");
+		return;
+	}
+	if (!isValidAscii(document.getElementById("password").value))
+	{
+		alert("å¯ç åå«éæ³å­ç¬¦.");
+		return;
+	}
+  var web_Username = document.getElementById('username').value;
+  var web_Password = document.getElementById('password').value;
+  var obj = new Object;
+  obj.web_login_name = web_Username;
+	obj.web_login_password = encryted_pwd(web_Password);
+	var cgipath = "/aoaform/";
+	if(web_Username == usernameGet)
+	{
+		cgipath = "/aoaform/";
+	}else
+	{
+		cgipath = "/boaform/";
+	}
+	var nonedatav = Math.random();
+	sendRequest(cgipath+"web_login_exe", obj,function(data){
+		if(data.result == "success_telecomadmin")
+	  	{
+			if(checkSkipRegister() != 0){
+				return;
+			}else{
+				window.location = "/webcmcc/index_content.html?noned="+nonedatav;
+			}
+		}
+		else if(data.result == "success_useradmin")
+		{
+		    window.location = "/webcmcc/index_content_user.html?noned="+nonedatav;
+		 }
+		else if(data.result == "invalid_username")
+		{
+			//DTS2017072602359 8-2
+			alert("è´¦å·æå¯ç éè¯¯ï¼è¯·éæ°ç»å½ï¼");
+		    window.location.reload();
+		}
+		else if(data.result == "bad_password")
+		{
+			//DTS2017072602359 8-2
+			alert("è´¦å·æå¯ç éè¯¯ï¼è¯·éæ°ç»å½ï¼");
+		    window.location.reload();
+		}
+		else if(data.result == "one_user_login")
+		{
+			alert("å½åå·²æä¸ä¸ªç¨æ·å·²ç»éï¼éåºå·²ç»éç¨æ·éè¯ï¼");
+		    window.location.reload();
+		}
+		else if(data.result == "three_error_login")
+		{
+			alert("å¯ç éè¯¯ä¸æ¬¡ï¼è¯·ä¸åéä¹åéæ°ç»å½ï¼");
+		    document.getElementById('username').disabled = true;
+		    document.getElementById('password').disabled = true;
+		}
+		else if(data.result == "invalid_password")
+		{
+			//DTS2017072602359 8-2
+			alert("è´¦å·æå¯ç éè¯¯ï¼è¯·éæ°ç»å½ï¼");
+		    window.location.reload();
+		}
+		else if(data.result == "telecomadmin_disabled_err")
+		{
+			alert("ç»´æ¤è´¦å·ä½¿è½æªæå¼ï¼");
+		    window.location.reload();
+		}
+		else if(data.result == "get_password_err")
+		{
+			alert("è´¦å·æå¯ç éè¯¯ï¼è¯·éæ°ç»å½ï¼");
+		    window.location.reload();
+		}
+		else
+		{
+			alert("æªç¥çè¿åå¼");
+		}
+	});
+}
+
+document.onkeydown=function(event){
+	e = event ? event :(window.event ? window.event : null);
+	if(e.keyCode==13)
+	{
+   	login();
+	}
+}
+
+function eyeSwitchFun(){
+	var className = document.getElementById("eyeOpenPassword").className;
+		if(className == "img_eye_close"){
+		document.getElementById("eyeOpenPassword").className = "eye_open";
+		document.getElementById("password").type = "text"
+		}
+		else
+		{
+		document.getElementById("eyeOpenPassword").className = "img_eye_close";
+		document.getElementById("password").type = "password"
+		}	
+}
+</script>
+</head>
+
+<body>
+<div id="logo">
+	<img src="./images/cdmc_logo.png" width="237px;height:100px">
+</div>
+<div align="center" id="bgimg" >
+	<div id="main">
+	    <form name="loginform" id="loginform" action="" method="post">
+	        <table width="420" border="0" cellpadding="0" cellspacing="0" id="logininput">
+	            <tr style="height:50px">
+		            <td> &nbsp;</td>
+		        </tr>
+				<tr>
+					<td>
+						<div class="divtd">
+							<span style="width:90px;height:35px;align:right" id="lang_user">è´¦ å·</span>
+							<input type="text" id="username" name="username" value="" maxlength="32" class="loginput" />
+						</div>
+					</td>
+				</tr>
+				<tr style="height:10px">
+	            	<td height="10" colspan="3"> &nbsp;</td>
+	          	</tr>
+				<tr>
+					<td>
+						<div class="divtd">
+							<span style="height:35px;align:right" id="lang_password">å¯ ç </span>
+							<input type="password" id="password" name="password" maxlength="63" autocomplete="off" class="loginput" onkeypress="detectCapsLock(event)" />
+							<span id="eyeOpenPassword" class='img_eye_close' onclick="eyeSwitchFun()"></span>
+							<font id ="capStatus" color="#FFFFFF"></font>
+						</div>
+					</td>
+				</tr>
+				<tr style="height:10px">
+	            	<td height="10" colspan="3"> &nbsp;</td>
+	          	</tr>
+				<tr>
+		            <td>
+		            	<input type="button" name="Submit" id="Submit" value="ç¡®å®" style="cursor:pointer;margin-left:58px;text-align:center" onclick="login();" />
+		           		<input type="button" name="Cancel" id="Cancel" value="åæ¶" style="cursor:pointer;margin-left:20px;text-align:center" onclick="cancel();" />
+		            	<input type="button" name="Regist" id="Regist" value="è®¾å¤æ³¨å" style="cursor:pointer;margin-left:20px;text-align:center" onclick="cancel_login();" />
+		            </td>
+			  	</tr>
+			</table>
+		</form>
+	</div>
+</div>
+<div id="app">
+	<img src="./images/app.png" width="130px" height="130px" style="border:4px solid #FFFFFF">
+</div>
+</body>
+</html>
+

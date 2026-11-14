@@ -1,0 +1,23 @@
+# 构建产物
+build/
+dist/
+_buildtest/
+*.spec
+__pycache__/
+*.pyc
+
+# 安卓构建中间产物
+android/.buildozer/
+android/bin/
+android/netctl_core.py
+android/ont_core.py
+android/crypto_compat.py
+
+# 含密码的配置，绝对不要提交
+netctl.json
+selftest.log
+
+# 抓包/侦察留下的临时文件
+_t*.py
+_ont_probe*.py
+_probe*.py
