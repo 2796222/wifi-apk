@@ -1,5 +1,5 @@
 # 把 Python 项目自动打包成 Android APK（在 GitHub 的免费 Linux 机器上跑 buildozer）
-# 用法：把整个 D:\wifi 目录推到 GitHub 仓库，然后 Actions 里手动运行本 workflow。
+# 推送到 main 分支会自动触发，也可以在 Actions 页面手动 Run workflow。
 name: build-apk
 
 on:
@@ -10,6 +10,8 @@ on:
 jobs:
   apk:
     runs-on: ubuntu-latest
+    timeout-minutes: 150
+
     steps:
       - uses: actions/checkout@v4
 
@@ -18,13 +20,24 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             git zip unzip openjdk-17-jdk python3-pip python3-venv \
-            autoconf libtool pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev \
+            autoconf libtool pkg-config zlib1g-dev libncurses-dev \
             libtinfo6 cmake libffi-dev libssl-dev
 
       - name: 安装 buildozer
         run: |
           python3 -m pip install --upgrade pip
           python3 -m pip install buildozer cython virtualenv
+
+      - name: 复制核心模块到 android/
+        run: |
+          cp netctl_core.py ont_core.py crypto_compat.py android/
+
+      - name: 检查打包配置（缺文件时直接报错，别浪费时间）
+        run: |
+          set -e
+          test -f android/buildozer.spec || { echo "::error::缺少 android/buildozer.spec，检查 .gitignore 是否误伤"; exit 1; }
+          test -f android/main.py || { echo "::error::缺少 android/main.py"; exit 1; }
+          ls -l android/ android/*.spec
 
       - name: 缓存 buildozer（第一次慢，之后快很多）
         uses: actions/cache@v4
@@ -33,10 +46,6 @@ jobs:
             ~/.buildozer
             android/.buildozer
           key: buildozer-${{ hashFiles('android/buildozer.spec') }}
-
-      - name: 复制核心模块到 android/
-        run: |
-          cp netctl_core.py ont_core.py crypto_compat.py android/
 
       - name: 打包 APK
         working-directory: android

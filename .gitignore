@@ -2,7 +2,14 @@
 build/
 dist/
 _buildtest/
-*.spec
+
+# PyInstaller 在根目录生成的 spec（注意：只忽略根目录，别误伤 android/buildozer.spec）
+/netctl*.spec
+/*.spec
+
+# 安卓工程的文件必须保留
+!android/buildozer.spec
+
 __pycache__/
 *.pyc
 
