@@ -75,7 +75,7 @@ class App(object):
         ttk.Entry(top, textvariable=self.host_var, width=16).pack(side="left", padx=6)
         self.status_var = tk.StringVar(value="准备就绪")
         ttk.Label(top, textvariable=self.status_var, foreground="#555").pack(side="left", padx=12)
-        ttk.Button(top, text="刷新设备 (F5)", command=lambda: self.refresh()).pack(side="right")
+        ttk.Button(top, text="刷新设备 (F5)", command=lambda: self.refresh(with_link=True)).pack(side="right")
         ttk.Checkbutton(top, text="每 5 秒自动刷新", variable=self.auto_refresh,
                         command=self._toggle_auto).pack(side="right", padx=10)
 
@@ -120,7 +120,7 @@ class App(object):
         self.btn_resume = ttk.Button(bottom, text="恢复限速", command=lambda: self.qos(True))
         self.btn_resume.pack(side="left", padx=4)
         ttk.Button(bottom, text="设置密码", command=self.set_password).pack(side="right")
-        self.root.bind("<F5>", lambda e: self.refresh())
+        self.root.bind("<F5>", lambda e: self.refresh(with_link=True))
 
     def _build_ont_tab(self):
         top = ttk.Frame(self.tab_ont, padding=(10, 8, 10, 4))
@@ -228,10 +228,11 @@ class App(object):
         self.router.login()
         return self.router
 
-    def refresh(self, async_=True, prompt=True):
+    def refresh(self, async_=True, prompt=True, with_link=False):
+        """with_link=True 时会临时开一下 QoS 读"接入方式"（有线/WiFi），只给手动刷新用。"""
         def worker():
             router = self._ensure_router(prompt)
-            return router.devices(), router.qos_state()
+            return router.devices(with_link=with_link), router.qos_state()
 
         def ok(result):
             devices, state = result

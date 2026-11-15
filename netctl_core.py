@@ -310,23 +310,23 @@ class Device(object):
 
 
 def _link_text(dev=None, dtype=None, port=None):
-    """判断接入方式：WiFi 5G / WiFi 2.4G / 有线。只在路由器返回了这些字段时才知道。"""
+    """判断接入方式：WiFi 5G / WiFi 2.4G / 有线。
+
+    路由器只在 QoS 开启时才返回每台设备的 dev 字段，所以拿不到就返回空（界面显示 '-'），
+    绝不瞎猜——有线设备的 port 可能是物理端口号，猜成 2.4G/5G 会误导。
+    """
     d = str(dev or "").lower()
     t = str(dtype or "").lower()
     if d.startswith("wl0"):
         return "WiFi 5G"
     if d.startswith("wl1"):
         return "WiFi 2.4G"
-    if d.startswith(("eth", "br", "lan", "usb")):
+    if d.startswith(("eth", "enp", "enx", "br", "lan", "usb")):
         return "有线"
     if t == "wifi":
         return "WiFi 5G" if str(port) == "2" else ("WiFi 2.4G" if str(port) == "1" else "WiFi")
-    if t in ("line", "lan", "ethernet", "wire"):
+    if t in ("line", "lan", "ethernet", "wire", "wired", "eth"):
         return "有线"
-    if str(port) == "1":
-        return "WiFi 2.4G"
-    if str(port) == "2":
-        return "WiFi 5G"
     return ""
 
 
