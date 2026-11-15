@@ -28,7 +28,8 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             git zip unzip openjdk-17-jdk python3-pip python3-venv \
             autoconf libtool libltdl-dev pkg-config zlib1g-dev \
-            libncurses5-dev libncursesw5-dev libtinfo6 cmake libffi-dev libssl-dev
+            libncurses5-dev libncursesw5-dev libtinfo6 cmake libffi-dev libssl-dev \
+            fonts-droid-fallback
 
       - name: 安装 buildozer
         run: |
@@ -58,6 +59,13 @@ jobs:
 
       - name: 复制核心模块到 android/
         run: cp netctl_core.py ont_core.py crypto_compat.py android/
+
+      - name: 放入中文字体（Kivy 默认字体没有汉字，否则界面全是方块）
+        run: |
+          set -e
+          mkdir -p android/fonts
+          cp /usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf android/fonts/
+          ls -l android/fonts/
 
       - name: 检查打包配置（缺文件立刻报错，别浪费时间）
         run: |

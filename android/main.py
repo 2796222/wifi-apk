@@ -16,6 +16,7 @@ import threading
 
 from kivy.app import App
 from kivy.clock import Clock
+from kivy.core.text import LabelBase
 from kivy.core.window import Window
 from kivy.metrics import dp
 from kivy.uix.boxlayout import BoxLayout
@@ -31,6 +32,30 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import netctl_core as nc  # noqa: E402
 
 TYPE_NAME = {"1": "电脑", "2": "手机", "8": "网关/路由"}
+
+
+# ---------------------------------------------------------------- 中文字体
+# Kivy 自带的 Roboto 没有汉字，不换字体就是一堆方块（□□□）。
+# 这里把找到的第一个中文字体注册成默认字体 "Roboto"，全局生效。
+_HERE = os.path.dirname(os.path.abspath(__file__))
+FONT_CANDIDATES = [
+    os.path.join(_HERE, "fonts", "DroidSansFallbackFull.ttf"),
+    os.path.join(_HERE, "fonts", "NotoSansCJKsc-Regular.otf"),
+    os.path.join(_HERE, "fonts", "simhei.ttf"),
+    "/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf",
+    r"C:\Windows\Fonts\simhei.ttf",
+    r"C:\Windows\Fonts\msyh.ttc",
+]
+
+FONT_PATH = None
+for _f in FONT_CANDIDATES:
+    if os.path.exists(_f):
+        try:
+            LabelBase.register(name="Roboto", fn_regular=_f)
+            FONT_PATH = _f
+            break
+        except Exception:
+            continue
 
 
 # ---------------------------------------------------------------- 小工具

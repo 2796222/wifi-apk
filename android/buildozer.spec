@@ -11,7 +11,8 @@ package.domain = org.home
 source.dir = .
 
 # 只打包这些后缀的文件（避免把临时文件、文档塞进去）
-source.include_exts = py,png,jpg,kv,atlas,json
+# ttf/otf 是给中文字体用的，必须有，否则界面全是方块
+source.include_exts = py,png,jpg,kv,atlas,json,ttf,otf
 
 # 别把带密码的配置打进去
 source.exclude_patterns = netctl.json, __pycache__, *.pyc

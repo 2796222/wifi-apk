@@ -28,3 +28,8 @@ selftest.log
 _t*.py
 _ont_probe*.py
 _probe*.py
+
+# APK 下载产物（别提交，几十 MB）
+netctl-apk.zip
+netctl-apk/
+*.apk
