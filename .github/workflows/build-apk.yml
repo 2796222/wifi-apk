@@ -15,12 +15,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # 关键修复 1：强行指定 Java 17（GitHub 默认是 25，会导致打包失败）
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
       - name: 安装系统依赖
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             git zip unzip openjdk-17-jdk python3-pip python3-venv \
-            autoconf libtool pkg-config zlib1g-dev libncurses-dev \
+            autoconf libtool libltdl-dev pkg-config zlib1g-dev libncurses-dev \
             libtinfo6 cmake libffi-dev libssl-dev
 
       - name: 安装 buildozer
