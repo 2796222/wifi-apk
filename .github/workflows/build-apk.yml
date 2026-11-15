@@ -29,7 +29,7 @@ jobs:
             git zip unzip openjdk-17-jdk python3-pip python3-venv \
             autoconf libtool libltdl-dev pkg-config zlib1g-dev \
             libncurses5-dev libncursesw5-dev libtinfo6 cmake libffi-dev libssl-dev \
-            fonts-droid-fallback
+            fonts-droid-fallback fonts-wqy-microhei
 
       - name: 安装 buildozer
         run: |
@@ -60,11 +60,46 @@ jobs:
       - name: 复制核心模块到 android/
         run: cp netctl_core.py ont_core.py crypto_compat.py android/
 
-      - name: 放入中文字体（Kivy 默认字体没有汉字，否则界面全是方块）
+      - name: 准备中文字体（必须同时含中文和数字/字母，否则数字还是方块）
         run: |
           set -e
+          python3 -m pip install fonttools
           mkdir -p android/fonts
-          cp /usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf android/fonts/
+          python3 - <<'PY'
+          import os
+          from fontTools.ttLib import TTFont
+
+          cands = [
+              "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
+              "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+              "/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf",
+          ]
+          need = "0A中台"
+          chosen = None
+          for src in cands:
+              if not os.path.exists(src):
+                  print("skip(不存在):", src)
+                  continue
+              try:
+                  f = TTFont(src, fontNumber=0)
+              except Exception as exc:
+                  print("skip(打不开):", src, exc)
+                  continue
+              cmap = f.getBestCmap()
+              missing = [c for c in need if ord(c) not in cmap]
+              if missing:
+                  print("skip(缺字 %s):" % missing, src)
+                  continue
+              ext = "ttf" if "glyf" in f else "otf"
+              out = "android/fonts/cn." + ext
+              f.save(out)
+              print("选中字体:", src, "->", out)
+              chosen = out
+              break
+          if not chosen:
+              raise SystemExit("没有找到同时包含中文和数字的字体")
+          print("font_ready:", chosen)
+          PY
           ls -l android/fonts/
 
       - name: 检查打包配置（缺文件立刻报错，别浪费时间）

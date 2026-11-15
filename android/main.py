@@ -39,9 +39,10 @@ TYPE_NAME = {"1": "电脑", "2": "手机", "8": "网关/路由"}
 # 这里把找到的第一个中文字体注册成默认字体 "Roboto"，全局生效。
 _HERE = os.path.dirname(os.path.abspath(__file__))
 FONT_CANDIDATES = [
-    os.path.join(_HERE, "fonts", "DroidSansFallbackFull.ttf"),
-    os.path.join(_HERE, "fonts", "NotoSansCJKsc-Regular.otf"),
+    os.path.join(_HERE, "fonts", "cn.ttf"),
+    os.path.join(_HERE, "fonts", "cn.otf"),
     os.path.join(_HERE, "fonts", "simhei.ttf"),
+    "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
     "/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf",
     r"C:\Windows\Fonts\simhei.ttf",
     r"C:\Windows\Fonts\msyh.ttc",
