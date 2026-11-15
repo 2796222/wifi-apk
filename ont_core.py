@@ -114,15 +114,28 @@ class OntClient(object):
     def _loads(text):
         """光猫有时吐出 :[,{...}] 这种非法空项，先修再解析。"""
         import json
+        if not text or not text.strip():
+            raise OntError("光猫返回了空响应（会话可能过期），请再点一次刷新")
         fixed = re.sub(r":\s*\[\s*,", ":[", text)
         fixed = re.sub(r",\s*,", ",", fixed)
-        return json.loads(fixed)
+        try:
+            return json.loads(fixed)
+        except ValueError:
+            raise OntError("光猫返回的内容不是 JSON（可能被踢回登录页），请重试")
 
-    def call(self, name, extra="", need_key=True):
+    def call(self, name, extra="", need_key=True, _retry=True):
         if need_key:
             self.fetch_key()          # 数据用"取 key 那一刻"的密钥加密，所以必须先取
         body = "mode_name=/boaform/%s&nonedata=0.5%s" % (name, extra)
         _, text = self.http("POST", "/boaform/%s.cgi" % name, body)
+        if not (text or "").strip() and _retry:
+            # 会话失效时重新登录再试一次（连续点刷新容易出现）
+            try:
+                self.token = None
+                self.login()
+            except Exception:
+                pass
+            return self.call(name, extra, need_key=need_key, _retry=False)
         return text
 
     def get_page(self, path):

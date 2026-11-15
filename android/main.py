@@ -82,8 +82,10 @@ class NetctlApp(App):
         self.tab_ont = TabbedPanelItem(text="光猫")
         root.add_widget(self.tab_router)
         root.add_widget(self.tab_ont)
+        root.default_tab = self.tab_router
         self.tab_router.content = self._build_router_tab()
         self.tab_ont.content = self._build_ont_tab()
+        self.tabs = root
 
         Clock.schedule_once(lambda dt: self.refresh_router(), 0.5)
         return root

@@ -443,7 +443,12 @@ class App(object):
         def worker():
             ont = self._ensure_ont()
             rows = ont.devices()
-            blocked = {(i.get("MACAddress") or "").upper() for i in ont.mac_filter()["list"]}
+            try:
+                blocked = {(i.get("MACAddress") or "").upper()
+                           for i in ont.mac_filter()["list"]}
+            except Exception:
+                # 设备表已经拿到了，黑名单读失败也不影响显示
+                blocked = set()
             return rows, blocked
 
         def ok(result):
@@ -484,7 +489,10 @@ class App(object):
             ont = self._ensure_ont()
             ok_ = ont.block(dev["mac"], blocked)
             rows = ont.devices()
-            listed = {(i.get("MACAddress") or "").upper() for i in ont.mac_filter()["list"]}
+            try:
+                listed = {(i.get("MACAddress") or "").upper() for i in ont.mac_filter()["list"]}
+            except Exception:
+                listed = set()
             return rows, listed, ok_
 
         def ok(result):

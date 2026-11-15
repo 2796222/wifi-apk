@@ -1,4 +1,5 @@
-# 把 Python 项目自动打包成 Android APK（在 GitHub 的免费 Linux 机器上跑 buildozer）
+# 把 Python 项目自动打包成 Android APK（在 GitHub 的 Linux 机器上跑 buildozer）
+# 推送到 main 分支自动触发，也可以在 Actions 页面手动 Run workflow。
 name: build-apk
 
 on:
@@ -8,17 +9,17 @@ on:
 
 jobs:
   apk:
-    runs-on: ubuntu-latest
-    timeout-minutes: 150
+    # 固定 22.04：buildozer 兼容性比 24.04 好
+    runs-on: ubuntu-22.04
+    timeout-minutes: 180
 
     steps:
       - uses: actions/checkout@v4
 
-      # 关键修复：强行指定 Java 17（GitHub 默认环境可能不匹配）
-      - name: Set up JDK 17
+      - name: 设置 JDK 17
         uses: actions/setup-java@v4
         with:
-          distribution: 'temurin'
+          distribution: temurin
           java-version: '17'
 
       - name: 安装系统依赖
@@ -26,24 +27,44 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             git zip unzip openjdk-17-jdk python3-pip python3-venv \
-            autoconf libtool libltdl-dev pkg-config zlib1g-dev libncurses-dev \
-            libtinfo6 cmake libffi-dev libssl-dev
+            autoconf libtool libltdl-dev pkg-config zlib1g-dev \
+            libncurses5-dev libncursesw5-dev libtinfo6 cmake libffi-dev libssl-dev
 
-      - name: 安装 buildozer 和指定版本的 Cython
+      - name: 安装 buildozer
         run: |
           python3 -m pip install --upgrade pip
-          # 固定 Cython 版本，防止最新版不兼容 Kivy 编译
-          python3 -m pip install buildozer cython==0.29.36 virtualenv
+          python3 -m pip install buildozer virtualenv
+
+      - name: 准备内存（不足 4G swap 时补一个，幂等）
+        run: |
+          set -x
+          free -h || true
+          nproc || true
+          CUR=$(swapon --show=SIZE --noheadings --bytes 2>/dev/null | awk '{s+=$1} END {print s+0}')
+          echo "current swap bytes: ${CUR:-0}"
+          if [ "${CUR:-0}" -lt 4000000000 ]; then
+            if sudo fallocate -l 4G /mnt/swapfile_ci 2>/dev/null; then
+              SWAP=/mnt/swapfile_ci
+            else
+              SWAP=/swapfile_ci
+              sudo dd if=/dev/zero of="$SWAP" bs=1M count=4096 status=none
+            fi
+            sudo chmod 600 "$SWAP"
+            sudo mkswap "$SWAP" >/dev/null
+            sudo swapon "$SWAP" || true
+          fi
+          swapon --show || true
+          free -h || true
 
       - name: 复制核心模块到 android/
-        run: |
-          cp netctl_core.py ont_core.py crypto_compat.py android/
+        run: cp netctl_core.py ont_core.py crypto_compat.py android/
 
-      - name: 检查打包配置
+      - name: 检查打包配置（缺文件立刻报错，别浪费时间）
         run: |
           set -e
-          test -f android/buildozer.spec || { echo "::error::缺少 android/buildozer.spec"; exit 1; }
+          test -f android/buildozer.spec || { echo "::error::缺少 android/buildozer.spec，检查 .gitignore"; exit 1; }
           test -f android/main.py || { echo "::error::缺少 android/main.py"; exit 1; }
+          ls -l android/
 
       - name: 缓存 buildozer（第一次慢，之后快很多）
         uses: actions/cache@v4
@@ -51,24 +72,18 @@ jobs:
           path: |
             ~/.buildozer
             android/.buildozer
-          key: buildozer-v2-${{ hashFiles('android/buildozer.spec') }}
+          key: buildozer-v3-${{ hashFiles('android/buildozer.spec') }}
 
-      - name: 打包 APK（增加内存防溢出机制）
+      - name: 打包 APK
         working-directory: android
+        env:
+          # 限制 Java/Gradle 内存，避免和 NDK 编译抢内存
+          _JAVA_OPTIONS: "-Xmx1536m"
+          GRADLE_OPTS: "-Xmx1536m -Dorg.gradle.daemon=false -Dorg.gradle.workers.max=1 -Dorg.gradle.parallel=false"
+          MAKEFLAGS: "-j2"
         run: |
-          # 1. 清理上次可能失败残留的编译文件，防止二次污染
-          rm -rf .buildozer/android/platform/build-*
-          
-          # 2. 挂载 2GB 交换空间 (Swap)，防止编译时内存耗尽被杀
-          sudo fallocate -l 2G /swapfile
-          sudo chmod 600 /swapfile
-          sudo mkswap /swapfile
-          sudo swapon /swapfile
-          
-          # 3. 限制 Java 堆内存，并关闭 Gradle 守护进程，释放内存
-          export _JAVA_OPTIONS="-Xmx2G"
-          export GRADLE_OPTS="-Xmx2048m -Dorg.gradle.daemon=false"
-          
+          set -e
+          rm -rf .buildozer/android/platform/build-* || true
           export PATH="$HOME/.local/bin:$PATH"
           buildozer -v android debug
 

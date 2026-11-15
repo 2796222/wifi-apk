@@ -32,7 +32,7 @@ android.api = 31
 android.minapi = 21
 
 # 架构：现在手机基本都是 arm64
-android.archs = arm64-v8a, armeabi-v7a
+android.archs = arm64-v8a
 
 android.allow_backup = True
 android.accept_sdk_license = True
