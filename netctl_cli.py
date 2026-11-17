@@ -14,6 +14,14 @@ netctl_cli.py —— 命令行版路由器管控（傻瓜菜单）
     python netctl_cli.py qos off|manual|auto
     python netctl_cli.py setpass        修改路由器管理密码
     python netctl_cli.py whoami         自动识别本机 MAC
+
+    # 光猫（插网线的设备在 192.168.1.1 那边）
+    python netctl_cli.py ont            光猫设备列表（附封禁记录对照）
+    python netctl_cli.py ont-block 2    光猫上封禁（会写本地记录）
+    python netctl_cli.py ont-unblock 2  解封（记录里标解封时间）
+    python netctl_cli.py ont-history    看封禁记录：谁被封过、现在还在不在黑名单
+    python netctl_cli.py ont-reapply    被人解封/光猫被重置后，按记录一键封回去
+    python netctl_cli.py setontpass     设置光猫管理密码
 """
 import os
 import sys
@@ -160,31 +168,76 @@ def new_ont(cfg):
     if not cfg.ont_password:
         raise nc.RouterError("还没有配置光猫管理密码，先运行：python netctl_cli.py setontpass")
     ont = OntClient(cfg.ont_host, cfg.ont_user, cfg.ont_password)
-    ont.login()
+    try:
+        ont.login()
+    except Exception as exc:
+        msg = str(exc)
+        if "invalid_password" in msg:
+            raise nc.RouterError(
+                "光猫密码不对（invalid_password）。\n"
+                "  可能原因：你改过光猫密码、或者光猫被恢复出厂（背面的默认密码）。\n"
+                "  处理：用当前密码重新录入 → python netctl_cli.py setontpass")
+        raise
     return ont
 
 
 TYPE_NAME = {"1": "电脑", "2": "手机", "8": "网关/路由"}
 
 
+def _print_ont_history_section(current=None):
+    """打印本地封禁记录，并与设备当前黑名单对照。current=None 表示没连上、只显示本地记录。"""
+    hist = nc.BlockHistory()
+    entries = hist.entries("ont")
+    open_cnt = len(hist.open_entries("ont"))
+    print("封禁记录：历史 %d 条，仍处于封禁状态 %d 条（记录文件 %s）" % (
+        len(entries), open_cnt, hist.path))
+    if current is None:
+        print("（本次没连上光猫，只显示本地记录；核对状态请恢复连接后重试）")
+        return
+    alive, gone = hist.diff(current, where="ont")
+    if gone:
+        print("⚠ 有 %d 条记录本应是封禁状态，但光猫黑名单里已经没有它们：" % len(gone))
+        for e in gone:
+            print("   - %-18s %-16s 封禁于 %s" % (
+                e["mac"], e.get("name") or "", e.get("blocked_at") or "（后台手动/未知）"))
+        print("   （可能被人手动解封、或光猫被重置；一键封回去：python netctl_cli.py ont-reapply）")
+    elif open_cnt:
+        print("✔ 记录里的封禁都还在光猫黑名单里，没有被改动")
+
+
 def cmd_ont_list(cfg):
-    ont = new_ont(cfg)
-    rows = ont.devices()
-    blocked = set()
+    ont = None
+    rows = []
+    blocked = None
     try:
-        blocked = {(i.get("MACAddress") or "").upper() for i in ont.mac_filter()["list"]}
-    except Exception:
-        pass
+        ont = new_ont(cfg)
+        rows = ont.devices()
+        try:
+            blocked = {(i.get("MACAddress") or "").upper() for i in ont.mac_filter()["list"]}
+        except Exception:
+            blocked = None
+    except Exception as exc:  # noqa: BLE001
+        print("[警告] 连不上光猫：%s" % exc)
+        print("       下面的封禁记录是本地保存的，仍然能看（恢复连接后可自动核对）")
+    if rows:
+        print("")
+        print("%-4s %-22s %-15s %-18s %-7s %-10s %-8s %s" % (
+            "序号", "名称", "IP", "MAC", "接入", "类型", "端口", "封禁"))
+        print("-" * 110)
+        for d in rows:
+            link = "有线" if str(d["wlan"]) != "1" else "WiFi"
+            is_blocked = blocked is not None and d["mac"].upper() in blocked
+            print("%-5s %-22s %-15s %-18s %-7s %-10s %-8s %s" % (
+                d["idx"], d["name"][:22], d["ip"] or "-", d["mac"] or "-", link,
+                TYPE_NAME.get(str(d["type"]), "类型" + str(d["type"])),
+                d["port"], "已封禁" if is_blocked else "正常"))
     print("")
-    print("%-4s %-22s %-15s %-18s %-7s %-10s %-8s %s" % (
-        "序号", "名称", "IP", "MAC", "接入", "类型", "端口", "封禁"))
-    print("-" * 110)
-    for d in rows:
-        link = "有线" if str(d["wlan"]) != "1" else "WiFi"
-        print("%-5s %-22s %-15s %-18s %-7s %-10s %-8s %s" % (
-            d["idx"], d["name"][:22], d["ip"] or "-", d["mac"] or "-", link,
-            TYPE_NAME.get(str(d["type"]), "类型" + str(d["type"])),
-            d["port"], "已封禁" if d["mac"].upper() in blocked else "正常"))
+    # 把光猫上"不是本程序封的"（比如你直接在后台手动加的）也同步进本地记录
+    if blocked is not None:
+        added = nc.BlockHistory().sync_from_device(blocked, rows, where="ont")
+        if added:
+            print("已从光猫同步 %d 条现有黑名单到本地记录" % added)
+    _print_ont_history_section(blocked)
     print("")
 
 
@@ -195,8 +248,72 @@ def cmd_ont_block(cfg, target=None, blocked=True):
         cmd_ont_list(cfg)
         target = input("要%s哪台设备（序号/IP/名称）: " % ("封禁" if blocked else "解封"))
     dev = ont.resolve(target)
-    ont.block(dev["mac"], blocked)
-    print("光猫上「%s (%s)」已%s" % (dev["name"], dev["mac"], "封禁" if blocked else "解封"))
+    changed = ont.block(dev["mac"], blocked)
+    hist = nc.BlockHistory()
+    if blocked:
+        hist.record_block(dev["mac"], dev["name"], dev["ip"], where="ont")
+    else:
+        hist.record_unblock(dev["mac"], where="ont")
+    print("光猫上「%s (%s)」已%s%s" % (
+        dev["name"], dev["mac"], "封禁" if blocked else "解封",
+        "" if changed else "（本来就是该状态）"))
+    print("已写入本地封禁记录：", hist.path)
+
+
+def cmd_ont_history(cfg=None):
+    """显示本地封禁记录，并对照光猫当前黑名单。"""
+    hist = nc.BlockHistory()
+    entries = hist.entries("ont")
+    current = set()
+    note = ""
+    if cfg is not None:
+        try:
+            ont = new_ont(cfg)
+            current = {(i.get("MACAddress") or "").upper() for i in ont.mac_filter()["list"]}
+        except Exception as exc:
+            note = "（连不上光猫，只显示本地记录：%s）" % exc
+    if not entries:
+        print("还没有任何封禁记录。")
+        return
+    print("本地记录文件：", hist.path)
+    if note:
+        print(note)
+    print("")
+    print("%-18s %-20s %-15s %-20s %-20s %s" % (
+        "MAC", "名称", "IP", "封禁时间", "解封时间", "当前"))
+    print("-" * 120)
+    for e in entries:
+        if e.get("unblocked_at"):
+            state = "已解封"
+        elif current and e["mac"] not in current:
+            state = "⚠ 记录在、黑名单里没有"
+        elif current:
+            state = "封禁生效中"
+        else:
+            state = "封禁中（未核对）"
+        print("%-18s %-20s %-15s %-20s %-20s %s" % (
+            e["mac"], (e.get("name") or "")[:20], e.get("ip") or "-",
+            e.get("blocked_at") or "（后台手动/未知）", e.get("unblocked_at") or "-", state))
+    print("")
+
+
+def cmd_ont_reapply(cfg):
+    """把"记录里还处于封禁状态、但设备上已经没有"的地址重新封回去。"""
+    try:
+        ont = new_ont(cfg)
+        current = {(i.get("MACAddress") or "").upper() for i in ont.mac_filter()["list"]}
+    except Exception as exc:
+        print("[错误] 连不上光猫：", exc)
+        return
+    hist = nc.BlockHistory()
+    alive, gone = hist.diff(current, where="ont")
+    if not gone:
+        print("记录里的封禁都还在光猫上，不需要恢复。")
+        return
+    for e in gone:
+        ont.block(e["mac"], True)
+        print("已重新封禁：%s %s" % (e["mac"], e.get("name") or ""))
+    print("完成，共恢复 %d 条。" % len(gone))
 
 
 def cmd_set_ont_pass(cfg):
@@ -230,6 +347,8 @@ def menu(router, cfg):
         print("10. 查看光猫设备（192.168.1.1，插网线的设备在那边）")
         print("11. 光猫封禁 / 解封设备")
         print("12. 设置光猫管理密码")
+        print("13. 光猫封禁记录（含“可能被解封/被重置”检测）")
+        print("14. 按记录恢复封禁（被解封后一键封回去）")
         print(" 0. 退出")
         choice = input("请输入数字后回车: ").strip()
         try:
@@ -266,6 +385,10 @@ def menu(router, cfg):
                 cmd_ont_block(cfg, blocked=(a != "2"))
             elif choice == "12":
                 cmd_set_ont_pass(cfg)
+            elif choice == "13":
+                cmd_ont_history(cfg)
+            elif choice == "14":
+                cmd_ont_reapply(cfg)
             elif choice == "0":
                 return
         except nc.RouterError as exc:
@@ -301,6 +424,20 @@ def main(argv):
         if cmd0 in ("ont-unblock", "ontunblock"):
             try:
                 cmd_ont_block(cfg, args[1] if len(args) > 1 else None, False)
+                return 0
+            except Exception as exc:  # noqa: BLE001
+                print("[错误]", exc)
+                return 1
+        if cmd0 in ("ont-history", "onthistory", "ont-log"):
+            try:
+                cmd_ont_history(cfg)
+                return 0
+            except Exception as exc:  # noqa: BLE001
+                print("[错误]", exc)
+                return 1
+        if cmd0 in ("ont-reapply", "ontreapply"):
+            try:
+                cmd_ont_reapply(cfg)
                 return 0
             except Exception as exc:  # noqa: BLE001
                 print("[错误]", exc)

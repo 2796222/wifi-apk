@@ -255,6 +255,122 @@ class Config(dict):
         return None
 
 
+# ---------------------------------------------------------------- 封禁记录
+#
+# 为什么需要它：光猫/路由器上的黑名单是"易失"的——被手动解封、被重置、被恢复出厂都会消失，
+# 而界面里又看不出来"以前封过谁"。这里把每次封禁/解封都落到本地 JSON，
+# 程序重启后也能对照：哪些记录还在设备黑名单里、哪些已经被人动过手脚。
+
+class BlockHistory(object):
+    def __init__(self, path=None):
+        if path is None:
+            cfg = Config.load()
+            base = os.path.dirname(cfg._path) if cfg._path else app_dir()
+            path = os.path.join(base, "block_history.json")
+        self.path = path
+        self.data = []
+        self.load()
+
+    # ---- 读写
+    def load(self):
+        try:
+            with open(self.path, "r", encoding="utf-8") as fh:
+                data = json.load(fh)
+            self.data = data if isinstance(data, list) else []
+        except Exception:
+            self.data = []
+        return self.data
+
+    def save(self):
+        try:
+            folder = os.path.dirname(self.path)
+            if folder:
+                os.makedirs(folder, exist_ok=True)
+            tmp = self.path + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as fh:
+                json.dump(self.data, fh, ensure_ascii=False, indent=2)
+            os.replace(tmp, self.path)
+        except Exception:
+            pass
+
+    # ---- 记录
+    def record_block(self, mac, name="", ip="", where="ont"):
+        mac = (mac or "").upper()
+        for e in self.data:
+            if e.get("mac") == mac and e.get("where") == where and not e.get("unblocked_at"):
+                e["name"] = name or e.get("name") or ""
+                e["ip"] = ip or e.get("ip") or ""
+                self.save()
+                return e
+        e = {
+            "mac": mac,
+            "name": name or "",
+            "ip": ip or "",
+            "where": where,
+            "blocked_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "unblocked_at": None,
+        }
+        self.data.append(e)
+        self.save()
+        return e
+
+    def record_unblock(self, mac, where="ont"):
+        mac = (mac or "").upper()
+        changed = False
+        for e in self.data:
+            if e.get("mac") == mac and e.get("where") == where and not e.get("unblocked_at"):
+                e["unblocked_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
+                changed = True
+        if changed:
+            self.save()
+        return changed
+
+    # ---- 查询
+    def entries(self, where=None):
+        if where:
+            return [e for e in self.data if e.get("where") == where]
+        return list(self.data)
+
+    def open_entries(self, where="ont"):
+        """还处于"已封禁"状态（没解封过）的记录。"""
+        return [e for e in self.data if e.get("where") == where and not e.get("unblocked_at")]
+
+    def sync_from_device(self, current_macs, devices=None, where="ont"):
+        """把设备上已经存在的黑名单（比如你直接在光猫后台手动加的）同步进本地记录，返回新增条数。
+
+        这样程序重开之后，即使某条封禁不是本程序做的，也能在记录里看到、能一键解封。
+        """
+        current = {str(m).upper() for m in (current_macs or []) if m}
+        known = {e.get("mac") for e in self.data if e.get("where") == where}
+        names = {}
+        for d in devices or []:
+            names[(d.get("mac") or "").upper()] = (d.get("name") or "", d.get("ip") or "")
+        added = 0
+        for mac in sorted(current - known):
+            name, ip = names.get(mac, ("", ""))
+            self.data.append({
+                "mac": mac,
+                "name": name,
+                "ip": ip,
+                "where": where,
+                "blocked_at": None,      # 不是本程序封的，时间未知
+                "unblocked_at": None,
+                "source": "device",      # 从设备黑名单里发现的
+            })
+            added += 1
+        if added:
+            self.save()
+        return added
+
+    def diff(self, current_macs, where="ont"):
+        """对照设备当前黑名单：返回 (仍生效, 已消失)。"""
+        current = {m.upper() for m in (current_macs or [])}
+        alive, gone = [], []
+        for e in self.open_entries(where):
+            (alive if e["mac"] in current else gone).append(e)
+        return alive, gone
+
+
 # ---------------------------------------------------------------- 设备行
 
 class Device(object):

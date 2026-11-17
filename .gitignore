@@ -33,3 +33,6 @@ _probe*.py
 netctl-apk.zip
 netctl-apk/
 *.apk
+
+# 封禁记录（本地数据，含设备 MAC，别提交）
+block_history.json

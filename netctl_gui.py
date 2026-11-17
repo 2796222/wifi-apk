@@ -155,6 +155,8 @@ class App(object):
         self.btn_ont_unblock = ttk.Button(bottom, text="解封选中设备",
                                           command=lambda: self.block_ont(False))
         self.btn_ont_unblock.pack(side="left", padx=4)
+        ttk.Button(bottom, text="封禁记录 / 恢复封禁",
+                   command=self.show_history).pack(side="left", padx=4)
         ttk.Label(bottom, foreground="#777",
                   text="说明：光猫只能按 MAC 封禁/解封；它的限速最小粒度 512Kbps，限不住游戏。").pack(
             side="left", padx=12)
@@ -450,10 +452,17 @@ class App(object):
             except Exception:
                 # 设备表已经拿到了，黑名单读失败也不影响显示
                 blocked = set()
-            return rows, blocked
+            # 把设备上已有、但本地没记录的黑名单（比如你直接在光猫后台手动加的）同步进来
+            added = 0
+            if blocked:
+                try:
+                    added = nc.BlockHistory().sync_from_device(blocked, rows, where="ont")
+                except Exception:
+                    added = 0
+            return rows, blocked, added
 
         def ok(result):
-            rows, blocked = result
+            rows, blocked, added = result
             self.ont_devices = rows
             self.ont_tree.delete(*self.ont_tree.get_children())
             self.ont_by_iid = {}
@@ -467,9 +476,14 @@ class App(object):
                     TYPE_NAME.get(str(d["type"]), "类型" + str(d["type"])),
                     d["port"], "已封禁" if is_blocked else "正常"))
                 self.ont_by_iid[iid] = d
-            self.ont_status_var.set("光猫 %s ｜ 设备 %d 台 ｜ 已封禁 %d 台" % (
-                self.cfg.ont_host, len(rows), sum(1 for d in rows
-                                                 if (d["mac"] or "").upper() in blocked)))
+            hist = nc.BlockHistory()
+            open_cnt = len(hist.open_entries("ont"))
+            extra = "（本次从光猫同步 %d 条）" % added if added else ""
+            self.ont_status_var.set(
+                "光猫 %s ｜ 设备 %d 台 ｜ 已封禁 %d 台 ｜ 记录中封禁 %d 条%s" % (
+                    self.cfg.ont_host, len(rows),
+                    sum(1 for d in rows if (d["mac"] or "").upper() in blocked),
+                    open_cnt, extra))
 
         self._run(worker, ok, on_err=lambda e: self.ont_status_var.set("出错：" + str(e)))
 
@@ -489,6 +503,12 @@ class App(object):
         def worker():
             ont = self._ensure_ont()
             ok_ = ont.block(dev["mac"], blocked)
+            # 本地记录：程序重启后也能看到封过谁
+            hist = nc.BlockHistory()
+            if blocked:
+                hist.record_block(dev["mac"], dev["name"], dev.get("ip", ""), where="ont")
+            else:
+                hist.record_unblock(dev["mac"], where="ont")
             rows = ont.devices()
             try:
                 listed = {(i.get("MACAddress") or "").upper() for i in ont.mac_filter()["list"]}
@@ -500,9 +520,78 @@ class App(object):
             rows, listed, changed = result
             self.ont_devices = rows
             self.refresh_ont()
-            self.ont_status_var.set("光猫上「%s」已%s%s" % (
+            self.ont_status_var.set("光猫上「%s」已%s%s（已记录）" % (
                 dev["name"], "封禁" if blocked else "解封",
                 "" if changed else "（本来就是这个状态）"))
+
+        self._run(worker, ok, on_err=lambda e: self.ont_status_var.set("出错：" + str(e)))
+
+    # ------------------------------------------------------------ 封禁记录
+    def show_history(self):
+        def worker():
+            hist = nc.BlockHistory()
+            entries = hist.entries("ont")
+            current = None
+            try:
+                ont = self._ensure_ont()
+                current = {(i.get("MACAddress") or "").upper() for i in ont.mac_filter()["list"]}
+            except Exception:
+                current = None
+            return hist, entries, current
+
+        def ok(result):
+            hist, entries, current = result
+            win = tk.Toplevel(self.root)
+            win.title("封禁记录（本地保存，重启不丢）")
+            win.geometry("900x440")
+            txt = tk.Text(win, font=FONT, wrap="none")
+            txt.pack(fill="both", expand=True, padx=8, pady=8)
+            if not entries:
+                txt.insert("end", "还没有任何封禁记录。\n\n在光猫列表里封禁设备后会自动记录。")
+            else:
+                txt.insert("end", "记录文件：%s\n\n" % hist.path)
+                if current is None:
+                    txt.insert("end", "（本次没连上光猫，只显示本地记录）\n\n")
+                txt.insert("end", "%-18s %-22s %-15s %-20s %-20s %s\n" % (
+                    "MAC", "名称", "IP", "封禁时间", "解封时间", "当前状态"))
+                txt.insert("end", "-" * 130 + "\n")
+                for e in entries:
+                    if e.get("unblocked_at"):
+                        state = "已解封"
+                    elif current is not None and e["mac"] not in current:
+                        state = "⚠ 黑名单里没有（被人解封/光猫被重置？）"
+                    elif current is not None:
+                        state = "封禁生效中"
+                    else:
+                        state = "封禁中（未核对）"
+                    txt.insert("end", "%-18s %-22s %-15s %-20s %-20s %s\n" % (
+                        e["mac"], (e.get("name") or "")[:22], e.get("ip") or "-",
+                        e.get("blocked_at") or "-", e.get("unblocked_at") or "-", state))
+            txt.configure(state="disabled")
+
+            btns = ttk.Frame(win)
+            btns.pack(fill="x", padx=8, pady=(0, 8))
+            ttk.Button(btns, text="按记录重新封禁（恢复被解封的）",
+                       command=lambda: (win.destroy(), self.reapply_history())).pack(side="left")
+            ttk.Button(btns, text="关闭", command=win.destroy).pack(side="right")
+
+        self._run(worker, ok, on_err=lambda e: messagebox.showerror(APP_TITLE, str(e)))
+
+    def reapply_history(self):
+        def worker():
+            ont = self._ensure_ont()
+            current = {(i.get("MACAddress") or "").upper() for i in ont.mac_filter()["list"]}
+            hist = nc.BlockHistory()
+            alive, gone = hist.diff(current, where="ont")
+            done = 0
+            for e in gone:
+                ont.block(e["mac"], True)
+                done += 1
+            return done
+
+        def ok(done):
+            self.ont_status_var.set("按记录重新封禁：%d 台" % done)
+            self.refresh_ont()
 
         self._run(worker, ok, on_err=lambda e: self.ont_status_var.set("出错：" + str(e)))
 
