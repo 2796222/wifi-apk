@@ -102,6 +102,7 @@ class NetctlApp(App):
         self.ont = None
         self.selected = None
         self.selected_ont = None
+        self.flap_stop = None
 
         root = TabbedPanel(do_default_tab=False)
         self.tab_router = TabbedPanelItem(text="小米路由")
@@ -169,6 +170,8 @@ class NetctlApp(App):
             row1.add_widget(Button(text="刷新", on_release=lambda *a: self.refresh_ont()))
             row1.add_widget(Button(text="封禁选中", on_release=lambda *a: self.do_ont(True)))
             row1.add_widget(Button(text="解封选中", on_release=lambda *a: self.do_ont(False)))
+            self.flap_btn = Button(text="间歇封禁", on_release=lambda *a: self.flap_ont())
+            row2.add_widget(self.flap_btn)
             row2.add_widget(Button(text="设置光猫密码", on_release=lambda *a: self.set_ont_password()))
         wrap.add_widget(row1)
         wrap.add_widget(row2)
@@ -324,6 +327,44 @@ class NetctlApp(App):
             else:
                 self.ont_status.text = "「%s」已%s" % (dev["name"], "封禁" if blocked else "解封")
                 self.refresh_ont()
+
+        self._bg(work, done)
+
+    # ------------------------------------------------------------ 间歇封禁
+    def flap_ont(self):
+        # 再点一次 = 停止
+        if self.flap_stop is not None:
+            self.flap_stop.set()
+            self.ont_status.text = "正在停止间歇封禁……（会先恢复上网）"
+            return
+        dev = getattr(self, "selected_ont", None)
+        if not dev:
+            self.ont_status.text = "先在列表里点选一台设备"
+            return
+        stop = threading.Event()
+        self.flap_stop = stop
+        self.flap_btn.text = "停止间歇封禁"
+        self.ont_status.text = "间歇封禁进行中：封 5 秒 / 解 4 秒（±20%），再点一次停止"
+
+        def logmsg(msg):
+            Clock.schedule_once(lambda dt: setattr(self.ont_status, "text", msg), 0)
+
+        def work():
+            ont = self._ensure_ont()
+            fl = nc.Flapper(lambda: ont.block(dev["mac"], True),
+                            lambda: ont.block(dev["mac"], False),
+                            pattern=[(5, 4)], cycles=0, jitter=0.2,
+                            stop_event=stop, log=logmsg)
+            return fl.run()
+
+        def done(stats, err):
+            self.flap_stop = None
+            self.flap_btn.text = "间歇封禁"
+            if err:
+                self.ont_status.text = "间歇封禁出错：%s" % err
+            else:
+                self.ont_status.text = "间歇封禁结束（%d 轮），已恢复上网" % stats["rounds"]
+            self.refresh_ont()
 
         self._bg(work, done)
 

@@ -12,6 +12,7 @@ import os
 import queue
 import sys
 import threading
+import time
 import tkinter as tk
 from tkinter import messagebox, simpledialog, ttk
 
@@ -36,6 +37,7 @@ class App(object):
         self.busy = False
         self.queue = queue.Queue()
         self.auto_refresh = tk.BooleanVar(value=False)
+        self.flap_stop = None
 
         root.title(APP_TITLE)
         root.geometry("1180x640")
@@ -157,6 +159,8 @@ class App(object):
         self.btn_ont_unblock.pack(side="left", padx=4)
         ttk.Button(bottom, text="封禁记录 / 恢复封禁",
                    command=self.show_history).pack(side="left", padx=4)
+        self.btn_flap = ttk.Button(bottom, text="间歇封禁…", command=self.start_flap)
+        self.btn_flap.pack(side="left", padx=4)
         ttk.Label(bottom, foreground="#777",
                   text="说明：光猫只能按 MAC 封禁/解封；它的限速最小粒度 512Kbps，限不住游戏。").pack(
             side="left", padx=12)
@@ -594,6 +598,99 @@ class App(object):
             self.refresh_ont()
 
         self._run(worker, ok, on_err=lambda e: self.ont_status_var.set("出错：" + str(e)))
+
+    # ------------------------------------------------------------ 间歇封禁
+    def start_flap(self):
+        sel = self.ont_tree.selection()
+        if not sel:
+            messagebox.showinfo(APP_TITLE, "先在光猫列表里选一台设备")
+            return
+        dev = self.ont_by_iid.get(sel[0])
+        if not dev or not dev.get("mac"):
+            return
+        win = tk.Toplevel(self.root)
+        win.title("间歇封禁：%s" % dev.get("name", ""))
+        win.geometry("400x260")
+        win.transient(self.root)
+        vars_ = {}
+        rows = [("封禁秒数", "5"), ("解封秒数", "4"),
+                ("循环轮数（0=一直）", "10"), ("随机抖动 0~1（0.3=±30%）", "0.3")]
+        for i, (label, default) in enumerate(rows):
+            ttk.Label(win, text=label).grid(row=i, column=0, padx=12, pady=8, sticky="w")
+            var = tk.StringVar(value=default)
+            ttk.Entry(win, textvariable=var, width=12).grid(row=i, column=1, padx=12, pady=8)
+            vars_[i] = var
+        tip = ttk.Label(win, foreground="#777",
+                        text="效果：封几秒/解几秒循环，对方会以为网络不稳定。\n"
+                             "停止后自动恢复上网，并记录到 flap_log.json。")
+        tip.grid(row=4, column=0, columnspan=2, padx=12, pady=4, sticky="w")
+
+        def go():
+            try:
+                on = float(vars_[0].get())
+                off = float(vars_[1].get())
+                cycles = int(vars_[2].get() or 0)
+                jitter = max(0.0, min(1.0, float(vars_[3].get() or 0)))
+            except ValueError:
+                messagebox.showerror(APP_TITLE, "请填数字")
+                return
+            win.destroy()
+            self._run_flap(dev, on, off, cycles, jitter)
+
+        ttk.Button(win, text="开始", command=go).grid(row=5, column=0, padx=12, pady=12)
+        ttk.Button(win, text="取消", command=win.destroy).grid(row=5, column=1, padx=12, pady=12)
+
+    def stop_flap(self):
+        if self.flap_stop is not None:
+            self.flap_stop.set()
+            self.ont_status_var.set("正在停止间歇封禁……（会先恢复上网）")
+
+    def _run_flap(self, dev, on, off, cycles, jitter):
+        stop = threading.Event()
+        self.flap_stop = stop
+        self.btn_flap.configure(text="停止间歇封禁", command=self.stop_flap)
+        mac = dev["mac"]
+
+        def logmsg(msg):
+            self.queue.put((self.ont_status_var.set, (msg,)))
+
+        def worker():
+            try:
+                ont = self._ensure_ont()
+                fl = nc.Flapper(lambda: ont.block(mac, True),
+                                lambda: ont.block(mac, False),
+                                pattern=[(on, off)], cycles=cycles,
+                                jitter=jitter, stop_event=stop, log=logmsg)
+                stats = fl.run()
+                try:
+                    base = os.path.dirname(self.cfg._path) if self.cfg._path else nc.app_dir()
+                    nc.log_flap_session(os.path.join(base, "flap_log.json"), {
+                        "target": dev.get("name", ""), "mac": mac, "ip": dev.get("ip", ""),
+                        "where": "ont", "started": "",
+                        "ended": time.strftime("%Y-%m-%d %H:%M:%S"),
+                        "rounds": stats["rounds"],
+                        "pattern": ["%.1f/%.1f" % (on, off)],
+                        "jitter": jitter,
+                        "blocked_sec": round(stats["blocked_sec"], 1),
+                        "unblocked_sec": round(stats["unblocked_sec"], 1),
+                    })
+                except Exception:
+                    pass
+                self.queue.put((self._flap_done, (dev, stats)))
+            except Exception as exc:  # noqa: BLE001
+                err = exc
+                self.queue.put((lambda: (self._flap_done(dev, None),
+                                         self.ont_status_var.set("间歇封禁出错：%s" % err)), ()))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _flap_done(self, dev, stats):
+        self.flap_stop = None
+        self.btn_flap.configure(text="间歇封禁…", command=self.start_flap)
+        if stats:
+            self.ont_status_var.set("间歇封禁结束：「%s」%d 轮，已恢复上网" % (
+                dev.get("name", ""), stats["rounds"]))
+        self.refresh_ont()
 
     def set_ont_password(self):
         pw = simpledialog.askstring(

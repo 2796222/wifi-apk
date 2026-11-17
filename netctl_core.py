@@ -371,6 +371,124 @@ class BlockHistory(object):
         return alive, gone
 
 
+# ---------------------------------------------------------------- 间歇封禁（让网络看起来"不稳定"）
+#
+# 用法：block_fn/unblock_fn 是"封"和"解"的回调（光猫或小米路由都行）。
+# 节奏：封 on 秒 → 解 off 秒 → 循环；支持多组节奏（如 5/4,6/5,7/6）和随机抖动。
+# 结束时默认恢复成"解封"，并把这次会话写进 flap_log.json。
+
+def parse_pattern(text, default=(5.0, 4.0)):
+    """把 "5/4,6/5,7/6" 解析成 [(5,4),(6,5),(7,6)]；也接受 "5" 表示 on=off=5。"""
+    pairs = []
+    for part in str(text or "").replace("，", ",").split(","):
+        part = part.strip()
+        if not part:
+            continue
+        if "/" in part:
+            a, b = part.split("/", 1)
+            try:
+                pairs.append((float(a), float(b)))
+            except ValueError:
+                raise ValueError("节奏格式不对：%r（应该是 封秒/解秒，比如 5/4）" % part)
+        else:
+            try:
+                v = float(part)
+            except ValueError:
+                raise ValueError("节奏格式不对：%r" % part)
+            pairs.append((v, v))
+    return pairs or [tuple(default)]
+
+
+class Flapper(object):
+    def __init__(self, block_fn, unblock_fn, pattern=None, on_sec=5.0, off_sec=4.0,
+                 cycles=0, jitter=0.0, stop_event=None, log=None):
+        self.block_fn = block_fn
+        self.unblock_fn = unblock_fn
+        self.pattern = pattern or [(on_sec, off_sec)]
+        self.cycles = int(cycles or 0)          # 0 = 一直循环，直到 stop_event
+        self.jitter = max(0.0, float(jitter or 0))
+        self.stop_event = stop_event
+        self.log = log or (lambda msg: None)
+        self.stats = {"rounds": 0, "blocked_sec": 0.0, "unblocked_sec": 0.0}
+        self.final_state = None
+
+    # ---- 内部
+    def _stopped(self):
+        return bool(self.stop_event and self.stop_event.is_set())
+
+    def _wait(self, seconds):
+        """分片 sleep，方便及时响应停止；返回实际等了多久。"""
+        waited = 0.0
+        step = 0.2
+        while waited < seconds:
+            if self._stopped():
+                break
+            time.sleep(min(step, seconds - waited))
+            waited += step
+        return waited
+
+    def _sec(self, base):
+        if self.jitter <= 0:
+            return base
+        import random
+        return max(0.5, base * (1 + random.uniform(-self.jitter, self.jitter)))
+
+    # ---- 主循环
+    def run(self):
+        idx = 0
+        try:
+            while not self._stopped():
+                if self.cycles and self.stats["rounds"] >= self.cycles:
+                    break
+                on, off = self.pattern[idx % len(self.pattern)]
+                on, off = self._sec(on), self._sec(off)
+                idx += 1
+
+                self.block_fn()
+                self.final_state = "blocked"
+                self.log("封禁 %.1f 秒…（第 %d 轮）" % (on, self.stats["rounds"] + 1))
+                self.stats["blocked_sec"] += self._wait(on)
+                if self._stopped():
+                    break
+
+                self.unblock_fn()
+                self.final_state = "unblocked"
+                self.log("解封 %.1f 秒…" % off)
+                self.stats["unblocked_sec"] += self._wait(off)
+                self.stats["rounds"] += 1
+        finally:
+            # 收尾：默认恢复成"能上网"，避免他以为是设备坏了/家里网坏了
+            if self.final_state == "blocked":
+                try:
+                    self.unblock_fn()
+                    self.final_state = "unblocked"
+                except Exception:
+                    pass
+        return self.stats
+
+
+def log_flap_session(path, record):
+    """把一次间歇封禁会话追加到 flap_log.json。"""
+    data = []
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            loaded = json.load(fh)
+            data = loaded if isinstance(loaded, list) else []
+    except Exception:
+        data = []
+    data.append(record)
+    try:
+        folder = os.path.dirname(path)
+        if folder:
+            os.makedirs(folder, exist_ok=True)
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump(data[-200:], fh, ensure_ascii=False, indent=2)
+        os.replace(tmp, path)
+    except Exception:
+        pass
+
+
 # ---------------------------------------------------------------- 设备行
 
 class Device(object):

@@ -22,7 +22,14 @@ netctl_cli.py —— 命令行版路由器管控（傻瓜菜单）
     python netctl_cli.py ont-history    看封禁记录：谁被封过、现在还在不在黑名单
     python netctl_cli.py ont-reapply    被人解封/光猫被重置后，按记录一键封回去
     python netctl_cli.py setontpass     设置光猫管理密码
+
+    # 间歇封禁（看起来像网络不稳定）
+    python netctl_cli.py flap 2                封 5 秒 / 解 4 秒，一直循环（Ctrl+C 停）
+    python netctl_cli.py flap 2 --on 5 --off 4 --cycles 10
+    python netctl_cli.py flap 2 --pattern "5/4,6/5,7/6" --jitter 0.3
+    python netctl_cli.py flap-log              看间歇封禁历史
 """
+import json
 import os
 import sys
 
@@ -331,6 +338,128 @@ def cmd_set_ont_pass(cfg):
     print("光猫密码已保存并验证通过。")
 
 
+# ---------------------------------------------------------------- 间歇封禁
+
+FLAP_USAGE = """用法：
+  python netctl_cli.py flap <设备> [--on 5] [--off 4] [--cycles 10] [--pattern "5/4,6/5"] [--jitter 0.3]
+
+  设备：光猫或小米路由上的设备（序号/IP/名称/MAC 都行，先找光猫再找小米）
+  --on SEC      封多少秒（默认 5）
+  --off SEC     解多少秒（默认 4）
+  --cycles N    循环多少轮（默认 0 = 一直循环，Ctrl+C 停止）
+  --pattern     多组节奏，如 "5/4,6/5,7/6"（优先于 --on/--off）
+  --jitter X    时间随机抖动比例（0.3 = ±30%，更像"网络不稳定"）
+停掉（Ctrl+C）后会自动恢复成"能上网"，并把这次会话记到 flap_log.json。
+"""
+
+
+def _parse_flap_opts(args):
+    opts = {"on": 5.0, "off": 4.0, "cycles": 0, "pattern": None, "jitter": 0.0}
+    i = 0
+    while i < len(args):
+        a = args[i]
+        try:
+            if a == "--on" and i + 1 < len(args):
+                opts["on"] = float(args[i + 1]); i += 2; continue
+            if a == "--off" and i + 1 < len(args):
+                opts["off"] = float(args[i + 1]); i += 2; continue
+            if a == "--cycles" and i + 1 < len(args):
+                opts["cycles"] = int(args[i + 1]); i += 2; continue
+            if a == "--pattern" and i + 1 < len(args):
+                opts["pattern"] = args[i + 1]; i += 2; continue
+            if a == "--jitter" and i + 1 < len(args):
+                opts["jitter"] = float(args[i + 1]); i += 2; continue
+        except ValueError:
+            raise SystemExit("参数值不对：%s" % a)
+        raise SystemExit("没看懂的参数：%s\n%s" % (a, FLAP_USAGE))
+    return opts
+
+
+def _flap_log_path(cfg):
+    base = os.path.dirname(cfg._path) if cfg._path else "."
+    return os.path.join(base, "flap_log.json")
+
+
+def cmd_flap(cfg, target=None, opts=None):
+    import threading
+    import time as _time
+    opts = opts or {}
+    pattern = nc.parse_pattern(opts.get("pattern")) if opts.get("pattern") else [
+        (opts.get("on", 5.0), opts.get("off", 4.0))]
+
+    # 先找光猫，再找小米路由
+    where = None
+    ont = None
+    router = None
+    mac = name = ip = ""
+    try:
+        ont = new_ont(cfg)
+        if target is None:
+            cmd_ont_list(cfg)
+            target = input("要对哪台设备做间歇封禁（序号/IP/名称）: ")
+        dev = ont.resolve(target)
+        mac, name, ip, where = dev["mac"], dev["name"], dev.get("ip", ""), "ont"
+    except Exception as exc:  # noqa: BLE001
+        if target is None:
+            raise
+        try:
+            router = nc.connect()
+            dev = router.resolve(target)
+            mac, name, ip, where = dev.mac, dev.name, dev.ip, "router"
+        except Exception:
+            raise SystemExit("光猫和小米路由上都找不到「%s」（光猫报错：%s）" % (target, exc))
+
+    print("目标：%s（%s，%s）｜节奏：%s｜轮数：%s｜抖动：%.0f%%" % (
+        name, mac, where, ", ".join("%.0f/%.0f" % p for p in pattern),
+        opts.get("cycles") or "一直循环", opts.get("jitter", 0) * 100))
+
+    if where == "ont":
+        block_fn = lambda: ont.block(mac, True)
+        unblock_fn = lambda: ont.block(mac, False)
+    else:
+        block_fn = lambda: router.set_blocked(mac, True)
+        unblock_fn = lambda: router.set_blocked(mac, False)
+
+    stop = threading.Event()
+    flapper = nc.Flapper(block_fn, unblock_fn, pattern=pattern,
+                         cycles=opts.get("cycles", 0), jitter=opts.get("jitter", 0),
+                         stop_event=stop, log=lambda m: print("  " + m, flush=True))
+    started = _time.strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        stats = flapper.run()
+    except KeyboardInterrupt:
+        stop.set()
+        stats = flapper.stats
+    ended = _time.strftime("%Y-%m-%d %H:%M:%S")
+    print("结束：%d 轮，封 %0.f 秒 / 解 %0.f 秒，当前已解封（能上网）" % (
+        stats["rounds"], stats["blocked_sec"], stats["unblocked_sec"]))
+    nc.log_flap_session(_flap_log_path(cfg), {
+        "target": name, "mac": mac, "ip": ip, "where": where,
+        "started": started, "ended": ended, "rounds": stats["rounds"],
+        "pattern": ["%.1f/%.1f" % p for p in pattern],
+        "jitter": opts.get("jitter", 0),
+        "blocked_sec": round(stats["blocked_sec"], 1),
+        "unblocked_sec": round(stats["unblocked_sec"], 1),
+    })
+
+
+def cmd_flap_log(cfg):
+    path = _flap_log_path(cfg)
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+    except Exception:
+        print("还没有间歇封禁记录。")
+        return
+    print("记录文件：", path)
+    print("%-20s %-20s %-18s %-6s %-12s %s" % ("目标", "开始", "结束", "轮数", "节奏", "MAC"))
+    print("-" * 110)
+    for e in data[-30:]:
+        print("%-20s %-20s %-18s %-6s %-12s %s" % (
+            (e.get("target") or "")[:20], e.get("started") or "-", e.get("ended") or "-",
+            e.get("rounds"), ",".join(e.get("pattern") or []), e.get("mac") or ""))
+
+
 def menu(router, cfg):
     while True:
         print("")
@@ -349,6 +478,8 @@ def menu(router, cfg):
         print("12. 设置光猫管理密码")
         print("13. 光猫封禁记录（含“可能被解封/被重置”检测）")
         print("14. 按记录恢复封禁（被解封后一键封回去）")
+        print("15. 间歇封禁（封几秒/解几秒，循环，看起来像网络不稳定）")
+        print("16. 间歇封禁记录")
         print(" 0. 退出")
         choice = input("请输入数字后回车: ").strip()
         try:
@@ -389,6 +520,17 @@ def menu(router, cfg):
                 cmd_ont_history(cfg)
             elif choice == "14":
                 cmd_ont_reapply(cfg)
+            elif choice == "15":
+                print(FLAP_USAGE)
+                tgt = input("设备（序号/IP/名称，回车取消）: ").strip()
+                if tgt:
+                    a = input("封多少秒（回车=5）: ").strip() or "5"
+                    b = input("解多少秒（回车=4）: ").strip() or "4"
+                    n = input("循环几轮（回车=一直循环，Ctrl+C 停）: ").strip() or "0"
+                    cmd_flap(cfg, tgt, {"on": float(a), "off": float(b),
+                                        "cycles": int(n or 0), "jitter": 0.2})
+            elif choice == "16":
+                cmd_flap_log(cfg)
             elif choice == "0":
                 return
         except nc.RouterError as exc:
@@ -442,6 +584,21 @@ def main(argv):
             except Exception as exc:  # noqa: BLE001
                 print("[错误]", exc)
                 return 1
+        if cmd0 in ("flap", "ont-flap", "flutter"):
+            try:
+                tgt = args[1] if len(args) > 1 and not args[1].startswith("--") else None
+                rest = args[2:] if tgt else args[1:]
+                cmd_flap(cfg, tgt, _parse_flap_opts(rest))
+                return 0
+            except SystemExit as exc:
+                print(exc) if str(exc) else None
+                return 1
+            except Exception as exc:  # noqa: BLE001
+                print("[错误]", exc)
+                return 1
+        if cmd0 in ("flap-log", "flaplog"):
+            cmd_flap_log(cfg)
+            return 0
     if len(argv) >= 2 and argv[1] in ("setpass", "pass"):
         if not ensure_password(cfg):
             return 1
