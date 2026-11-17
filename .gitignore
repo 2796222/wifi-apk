@@ -36,3 +36,6 @@ netctl-apk/
 
 # 封禁记录（本地数据，含设备 MAC，别提交）
 block_history.json
+
+# 间歇封禁记录（本地数据，含设备 MAC，别提交）
+flap_log.json
